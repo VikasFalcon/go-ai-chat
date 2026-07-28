@@ -51,6 +51,14 @@ func (r *fakeRepo) Add(_ context.Context, d domain.Document) error {
 	return nil
 }
 func (r *fakeRepo) Count() int { return len(r.docs) }
+func (r *fakeRepo) HasSource(_ context.Context, source string) (bool, error) {
+	for _, d := range r.docs {
+		if d.Source == source {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (r *fakeRepo) Search(_ context.Context, query []float64, topK int) ([]domain.ScoredDocument, error) {
 	out := make([]domain.ScoredDocument, 0, len(r.docs))
 	for _, d := range r.docs {
@@ -71,6 +79,23 @@ func (r *fakeRepo) Search(_ context.Context, query []float64, topK int) ([]domai
 		topK = len(out)
 	}
 	return out[:topK], nil
+}
+
+func TestRAGService_IngestPDF_IsIdempotentBySource(t *testing.T) {
+	repo := &fakeRepo{}
+	rag := NewRAGService(newFakeEmbedder(), repo, fakeGenerator{}, fakePrompts{}, fakeLoader{text: "one two three"}, 3, 0.5, 800, 150)
+
+	first, err := rag.IngestPDF(context.Background(), "handbook.pdf")
+	if err != nil {
+		t.Fatalf("first ingestion failed: %v", err)
+	}
+	second, err := rag.IngestPDF(context.Background(), "handbook.pdf")
+	if err != nil {
+		t.Fatalf("second ingestion failed: %v", err)
+	}
+	if first != 1 || second != 0 || repo.Count() != 1 {
+		t.Fatalf("first=%d second=%d count=%d; want 1, 0, 1", first, second, repo.Count())
+	}
 }
 
 func cosine(a, b []float64) float64 {

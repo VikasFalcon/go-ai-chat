@@ -16,6 +16,9 @@ type Generator interface {
 
 type DocumentRepository interface {
 	Add(ctx context.Context, doc domain.Document) error
+	// HasSource reports whether chunks for a source have already been indexed.
+	// It lets ingestion remain idempotent across process restarts.
+	HasSource(ctx context.Context, source string) (bool, error)
 	Search(ctx context.Context, queryEmbedding []float64, topK int) ([]domain.ScoredDocument, error)
 	Count() int
 }

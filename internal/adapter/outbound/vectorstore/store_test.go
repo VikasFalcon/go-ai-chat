@@ -27,6 +27,9 @@ func TestStore_PersistenceRoundTrip(t *testing.T) {
 	if s1.Count() != 2 {
 		t.Fatalf("Count() = %d, want 2", s1.Count())
 	}
+	if found, err := s1.HasSource(ctx, "a.pdf"); err != nil || !found {
+		t.Fatalf("HasSource(a.pdf) = %v, %v; want true, nil", found, err)
+	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected persisted file to exist: %v", err)
 	}
@@ -38,6 +41,9 @@ func TestStore_PersistenceRoundTrip(t *testing.T) {
 	}
 	if s2.Count() != 2 {
 		t.Fatalf("after reload Count() = %d, want 2", s2.Count())
+	}
+	if found, err := s2.HasSource(ctx, "missing.pdf"); err != nil || found {
+		t.Fatalf("HasSource(missing.pdf) = %v, %v; want false, nil", found, err)
 	}
 
 	results, err := s2.Search(ctx, []float64{1, 0, 0}, 1)

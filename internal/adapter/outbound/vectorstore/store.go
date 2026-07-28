@@ -47,6 +47,18 @@ func (s *Store) Add(_ context.Context, doc domain.Document) error {
 	return s.persistLocked()
 }
 
+// HasSource reports whether one or more stored chunks belong to source.
+func (s *Store) HasSource(_ context.Context, source string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, d := range s.docs {
+		if d.Source == source {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Count returns the number of chunks currently stored.
 func (s *Store) Count() int {
 	s.mu.RLock()

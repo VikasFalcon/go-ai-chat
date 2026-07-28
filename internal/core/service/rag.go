@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/VikasFalcon/go-ai-chat/internal/core/domain"
 	"github.com/VikasFalcon/go-ai-chat/internal/core/port"
@@ -28,6 +29,7 @@ type RAGService struct {
 	simThreshold float64
 	chunkSize    int
 	chunkOverlap int
+	ingestMu     sync.Mutex
 }
 
 // NewRAGService wires up the RAG pipeline. loader may be nil if PDF ingestion
@@ -127,6 +129,20 @@ func (s *RAGService) IngestPDF(ctx context.Context, path string) (int, error) {
 		return 0, domain.ErrUnsupportedFileType
 	}
 
+	// Serialize ingestion so simultaneous requests for the same source cannot
+	// both pass the duplicate check and append duplicate chunks.
+	s.ingestMu.Lock()
+	defer s.ingestMu.Unlock()
+
+	source := filepath.Base(path)
+	alreadyIndexed, err := s.repo.HasSource(ctx, source)
+	if err != nil {
+		return 0, fmt.Errorf("check indexed source %s: %w", source, err)
+	}
+	if alreadyIndexed {
+		return 0, nil
+	}
+
 	text, err := s.loader.Load(path)
 	if err != nil {
 		return 0, fmt.Errorf("load pdf %s: %w", path, err)
@@ -135,7 +151,6 @@ func (s *RAGService) IngestPDF(ctx context.Context, path string) (int, error) {
 		return 0, domain.ErrEmptyDocument
 	}
 
-	source := filepath.Base(path)
 	chunks := chunkText(text, s.chunkSize, s.chunkOverlap)
 	if len(chunks) == 0 {
 		return 0, domain.ErrEmptyDocument

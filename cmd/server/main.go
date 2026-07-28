@@ -96,6 +96,10 @@ func ingestSeedPDFs(rag *service.RAGService, dir string, logger *slog.Logger) {
 			logger.Warn("failed to ingest seed PDF", "file", e.Name(), "error", err)
 			continue
 		}
+		if n == 0 {
+			logger.Info("seed PDF already indexed, skipping", "file", e.Name())
+			continue
+		}
 		logger.Info("ingested seed PDF", "file", e.Name(), "chunks", n)
 	}
 }

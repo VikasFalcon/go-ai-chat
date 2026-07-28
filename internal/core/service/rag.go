@@ -3,52 +3,25 @@ package service
 import (
 	"context"
 	"fmt"
-<<<<<<< HEAD
-=======
 	"path/filepath"
->>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	"strings"
 
 	"github.com/VikasFalcon/go-ai-chat/internal/core/domain"
 	"github.com/VikasFalcon/go-ai-chat/internal/core/port"
 )
 
-<<<<<<< HEAD
-const defaultTopK = 3
-=======
 const (
 	defaultTopK             = 3
 	defaultSimilarityThresh = 0.5
 	defaultChunkSize        = 800
 	defaultChunkOverlap     = 150
 )
->>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 
 type RAGService struct {
 	embedder  port.Embedder
 	repo      port.DocumentRepository
 	generator port.Generator
 	prompts   port.PromptBuilder
-<<<<<<< HEAD
-	topK      int
-}
-
-func NewRAGService(embedder port.Embedder, repo port.DocumentRepository, generator port.Generator, prompts port.PromptBuilder, topK int) *RAGService {
-	if topK <= 0 {
-		topK = defaultTopK
-	}
-	return &RAGService{embedder: embedder, repo: repo, generator: generator, prompts: prompts, topK: topK}
-}
-
-func (s *RAGService) Chat(ctx context.Context, prompt string) (string, error) {
-	if strings.TrimSpace(prompt) == "" {
-		return "", domain.ErrEmptyInput
-	}
-	return s.generator.Generate(ctx, prompt)
-}
-
-func (s *RAGService) Ask(ctx context.Context, question string) (string, error) {
-=======
 	loader    port.DocumentLoader
 
 	topK         int
@@ -100,7 +73,6 @@ func NewRAGService(
 // best match clears simThreshold. Otherwise it returns domain.OffTopicAnswer
 // as a normal (nil-error) answer, per the "not related to topic" requirement.
 func (s *RAGService) Chat(ctx context.Context, question string) (string, error) {
->>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	if strings.TrimSpace(question) == "" {
 		return "", domain.ErrEmptyInput
 	}
@@ -113,17 +85,6 @@ func (s *RAGService) Chat(ctx context.Context, question string) (string, error) 
 		return "", domain.ErrEmptyEmbedding
 	}
 
-<<<<<<< HEAD
-	docs, err := s.repo.Search(ctx, queryEmbedding, s.topK) // <- uses the injected repo, not a new Store{}
-	if err != nil {
-		return "", fmt.Errorf("search documents: %w", err)
-	}
-	if len(docs) == 0 {
-		return "", domain.ErrNoRelevantDocuments
-	}
-
-	prompt, err := s.prompts.Build(joinChunks(docs), question)
-=======
 	scored, err := s.repo.Search(ctx, queryEmbedding, s.topK)
 	if err != nil {
 		return "", fmt.Errorf("search documents: %w", err)
@@ -133,17 +94,10 @@ func (s *RAGService) Chat(ctx context.Context, question string) (string, error) 
 	}
 
 	prompt, err := s.prompts.Build(joinChunks(scored), question)
->>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	if err != nil {
 		return "", fmt.Errorf("build prompt: %w", err)
 	}
 
-<<<<<<< HEAD
-	return s.generator.Generate(ctx, prompt) // err checked by caller pattern below if you prefer
-}
-
-func (s *RAGService) Ingest(ctx context.Context, text string) error {
-=======
 	answer, err := s.generator.Generate(ctx, prompt)
 	if err != nil {
 		return "", fmt.Errorf("generate answer: %w", err)
@@ -201,7 +155,6 @@ func (s *RAGService) DocumentCount() int {
 }
 
 func (s *RAGService) ingestChunk(ctx context.Context, text, source string, index int) error {
->>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	if strings.TrimSpace(text) == "" {
 		return domain.ErrEmptyInput
 	}
@@ -209,14 +162,6 @@ func (s *RAGService) ingestChunk(ctx context.Context, text, source string, index
 	if err != nil {
 		return fmt.Errorf("embed document: %w", err)
 	}
-<<<<<<< HEAD
-	return s.repo.Add(ctx, domain.Document{Text: text, Embedding: embedding})
-}
-
-func joinChunks(docs []domain.Document) string {
-	texts := make([]string, len(docs))
-	for i, d := range docs {
-=======
 	return s.repo.Add(ctx, domain.Document{
 		Text:       text,
 		Embedding:  embedding,
@@ -228,7 +173,6 @@ func joinChunks(docs []domain.Document) string {
 func joinChunks(scored []domain.ScoredDocument) string {
 	texts := make([]string, len(scored))
 	for i, d := range scored {
->>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 		texts[i] = d.Text
 	}
 	return strings.Join(texts, "\n---\n")

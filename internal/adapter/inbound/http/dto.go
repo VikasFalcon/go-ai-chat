@@ -15,3 +15,10 @@ type AskResponse struct {
 type errorResponse struct {
 	Error string `json:"error"`
 }
+type IngestResponse struct {
+	Source         string `json:"source"`
+	ChunksIngested int    `json:"chunks_ingested"`
+}
+type StatsResponse struct {
+	DocumentChunks int `json:"document_chunks"`
+}

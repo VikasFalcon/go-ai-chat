@@ -10,6 +10,8 @@ func NewRouter(h *Handler) *gin.Engine {
 		v1.GET("/health", h.Health)
 		v1.POST("/chat", h.Chat)
 		v1.POST("/ask", h.Ask)
+		v1.POST("/ingest", h.Ingest)
+		v1.GET("/stats", h.Stats)
 	}
 	return r
 }

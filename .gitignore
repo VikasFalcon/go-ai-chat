@@ -1,1 +1,4 @@
 vendor/*
+data/pdfs/*
+!data/pdfs/.gitkeep
+data/vectorstore.json*

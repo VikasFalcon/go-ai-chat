@@ -3,19 +3,33 @@ package service
 import (
 	"context"
 	"fmt"
+<<<<<<< HEAD
+=======
+	"path/filepath"
+>>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	"strings"
 
 	"github.com/VikasFalcon/go-ai-chat/internal/core/domain"
 	"github.com/VikasFalcon/go-ai-chat/internal/core/port"
 )
 
+<<<<<<< HEAD
 const defaultTopK = 3
+=======
+const (
+	defaultTopK             = 3
+	defaultSimilarityThresh = 0.5
+	defaultChunkSize        = 800
+	defaultChunkOverlap     = 150
+)
+>>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 
 type RAGService struct {
 	embedder  port.Embedder
 	repo      port.DocumentRepository
 	generator port.Generator
 	prompts   port.PromptBuilder
+<<<<<<< HEAD
 	topK      int
 }
 
@@ -34,6 +48,59 @@ func (s *RAGService) Chat(ctx context.Context, prompt string) (string, error) {
 }
 
 func (s *RAGService) Ask(ctx context.Context, question string) (string, error) {
+=======
+	loader    port.DocumentLoader
+
+	topK         int
+	simThreshold float64
+	chunkSize    int
+	chunkOverlap int
+}
+
+// NewRAGService wires up the RAG pipeline. loader may be nil if PDF ingestion
+// is not needed (e.g. in tests that only exercise plain-text Ingest).
+func NewRAGService(
+	embedder port.Embedder,
+	repo port.DocumentRepository,
+	generator port.Generator,
+	prompts port.PromptBuilder,
+	loader port.DocumentLoader,
+	topK int,
+	similarityThreshold float64,
+	chunkSize int,
+	chunkOverlap int,
+) *RAGService {
+	if topK <= 0 {
+		topK = defaultTopK
+	}
+	if similarityThreshold <= 0 {
+		similarityThreshold = defaultSimilarityThresh
+	}
+	if chunkSize <= 0 {
+		chunkSize = defaultChunkSize
+	}
+	if chunkOverlap < 0 {
+		chunkOverlap = defaultChunkOverlap
+	}
+	return &RAGService{
+		embedder:     embedder,
+		repo:         repo,
+		generator:    generator,
+		prompts:      prompts,
+		loader:       loader,
+		topK:         topK,
+		simThreshold: similarityThreshold,
+		chunkSize:    chunkSize,
+		chunkOverlap: chunkOverlap,
+	}
+}
+
+// Chat performs a topic-gated RAG query: it embeds the question, retrieves
+// the closest chunks from the vector store, and only calls the LLM if the
+// best match clears simThreshold. Otherwise it returns domain.OffTopicAnswer
+// as a normal (nil-error) answer, per the "not related to topic" requirement.
+func (s *RAGService) Chat(ctx context.Context, question string) (string, error) {
+>>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	if strings.TrimSpace(question) == "" {
 		return "", domain.ErrEmptyInput
 	}
@@ -46,6 +113,7 @@ func (s *RAGService) Ask(ctx context.Context, question string) (string, error) {
 		return "", domain.ErrEmptyEmbedding
 	}
 
+<<<<<<< HEAD
 	docs, err := s.repo.Search(ctx, queryEmbedding, s.topK) // <- uses the injected repo, not a new Store{}
 	if err != nil {
 		return "", fmt.Errorf("search documents: %w", err)
@@ -55,14 +123,85 @@ func (s *RAGService) Ask(ctx context.Context, question string) (string, error) {
 	}
 
 	prompt, err := s.prompts.Build(joinChunks(docs), question)
+=======
+	scored, err := s.repo.Search(ctx, queryEmbedding, s.topK)
+	if err != nil {
+		return "", fmt.Errorf("search documents: %w", err)
+	}
+	if len(scored) == 0 || scored[0].Score < s.simThreshold {
+		return domain.OffTopicAnswer, nil
+	}
+
+	prompt, err := s.prompts.Build(joinChunks(scored), question)
+>>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	if err != nil {
 		return "", fmt.Errorf("build prompt: %w", err)
 	}
 
+<<<<<<< HEAD
 	return s.generator.Generate(ctx, prompt) // err checked by caller pattern below if you prefer
 }
 
 func (s *RAGService) Ingest(ctx context.Context, text string) error {
+=======
+	answer, err := s.generator.Generate(ctx, prompt)
+	if err != nil {
+		return "", fmt.Errorf("generate answer: %w", err)
+	}
+	return answer, nil
+}
+
+// Ask is kept as an alias so any existing caller of the previous Ask method
+// keeps working unchanged; it's the same topic-gated RAG flow as Chat.
+func (s *RAGService) Ask(ctx context.Context, question string) (string, error) {
+	return s.Chat(ctx, question)
+}
+
+// Ingest embeds and stores a single raw text chunk, tagging it as "manual".
+func (s *RAGService) Ingest(ctx context.Context, text string) error {
+	return s.ingestChunk(ctx, text, "manual", 0)
+}
+
+// IngestPDF extracts text from the PDF at path, splits it into overlapping
+// chunks, embeds each chunk, and stores it in the vector store. It returns
+// how many chunks were ingested.
+func (s *RAGService) IngestPDF(ctx context.Context, path string) (int, error) {
+	if s.loader == nil {
+		return 0, fmt.Errorf("no document loader configured")
+	}
+	if !strings.EqualFold(filepath.Ext(path), ".pdf") {
+		return 0, domain.ErrUnsupportedFileType
+	}
+
+	text, err := s.loader.Load(path)
+	if err != nil {
+		return 0, fmt.Errorf("load pdf %s: %w", path, err)
+	}
+	if strings.TrimSpace(text) == "" {
+		return 0, domain.ErrEmptyDocument
+	}
+
+	source := filepath.Base(path)
+	chunks := chunkText(text, s.chunkSize, s.chunkOverlap)
+	if len(chunks) == 0 {
+		return 0, domain.ErrEmptyDocument
+	}
+
+	for i, chunk := range chunks {
+		if err := s.ingestChunk(ctx, chunk, source, i); err != nil {
+			return i, fmt.Errorf("ingest chunk %d of %s: %w", i, source, err)
+		}
+	}
+	return len(chunks), nil
+}
+
+// DocumentCount reports how many chunks currently live in the vector store.
+func (s *RAGService) DocumentCount() int {
+	return s.repo.Count()
+}
+
+func (s *RAGService) ingestChunk(ctx context.Context, text, source string, index int) error {
+>>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 	if strings.TrimSpace(text) == "" {
 		return domain.ErrEmptyInput
 	}
@@ -70,12 +209,26 @@ func (s *RAGService) Ingest(ctx context.Context, text string) error {
 	if err != nil {
 		return fmt.Errorf("embed document: %w", err)
 	}
+<<<<<<< HEAD
 	return s.repo.Add(ctx, domain.Document{Text: text, Embedding: embedding})
 }
 
 func joinChunks(docs []domain.Document) string {
 	texts := make([]string, len(docs))
 	for i, d := range docs {
+=======
+	return s.repo.Add(ctx, domain.Document{
+		Text:       text,
+		Embedding:  embedding,
+		Source:     source,
+		ChunkIndex: index,
+	})
+}
+
+func joinChunks(scored []domain.ScoredDocument) string {
+	texts := make([]string, len(scored))
+	for i, d := range scored {
+>>>>>>> b57e7fc (project updated and accept pdf, convert into chuncks, and answer users questions in sementic manner)
 		texts[i] = d.Text
 	}
 	return strings.Join(texts, "\n---\n")

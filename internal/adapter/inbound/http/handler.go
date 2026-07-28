@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/VikasFalcon/go-ai-chat/internal/core/domain"
 	"github.com/VikasFalcon/go-ai-chat/internal/core/port"
@@ -72,7 +74,7 @@ func (h *Handler) Ingest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "missing \"file\" field with a .pdf upload"})
 		return
 	}
-	if filepath.Ext(fileHeader.Filename) != ".pdf" {
+	if !strings.EqualFold(filepath.Ext(fileHeader.Filename), ".pdf") {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: domain.ErrUnsupportedFileType.Error()})
 		return
 	}
@@ -84,23 +86,46 @@ func (h *Handler) Ingest(c *gin.Context) {
 	}
 	defer src.Close()
 
-	if err := os.MkdirAll(h.uploadTmpDir, 0o755); err != nil {
+	// PDF allows its header to appear within the first 1,024 bytes. Read that
+	// prefix before saving so an arbitrary file renamed to .pdf is rejected.
+	prefix, err := io.ReadAll(io.LimitReader(src, 1024))
+	if err != nil {
+		h.respondError(c, "ingest", fmt.Errorf("read upload header: %w", err))
+		return
+	}
+	if !bytes.Contains(prefix, []byte("%PDF-")) {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "uploaded file is not a valid PDF"})
+		return
+	}
+
+	if err := os.MkdirAll(h.uploadTmpDir, 0o700); err != nil {
 		h.respondError(c, "ingest", fmt.Errorf("prepare upload dir: %w", err))
 		return
 	}
-	tmpPath := filepath.Join(h.uploadTmpDir, fileHeader.Filename)
-	dst, err := os.Create(tmpPath)
+	requestDir, err := os.MkdirTemp(h.uploadTmpDir, "upload-")
+	if err != nil {
+		h.respondError(c, "ingest", fmt.Errorf("create upload dir: %w", err))
+		return
+	}
+	defer os.RemoveAll(requestDir)
+
+	// Never use an untrusted filename as a directory path. The unique temporary
+	// directory prevents concurrent uploads with the same filename from colliding.
+	tmpPath := filepath.Join(requestDir, filepath.Base(fileHeader.Filename))
+	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		h.respondError(c, "ingest", fmt.Errorf("create temp file: %w", err))
 		return
 	}
-	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
+	if _, err := io.Copy(dst, io.MultiReader(bytes.NewReader(prefix), src)); err != nil {
+		_ = dst.Close()
 		h.respondError(c, "ingest", fmt.Errorf("save upload: %w", err))
 		return
 	}
-	dst.Close()
-	defer os.Remove(tmpPath)
+	if err := dst.Close(); err != nil {
+		h.respondError(c, "ingest", fmt.Errorf("finalize upload: %w", err))
+		return
+	}
 
 	n, err := h.chat.IngestPDF(c.Request.Context(), tmpPath)
 	if err != nil {
